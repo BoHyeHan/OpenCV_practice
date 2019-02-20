@@ -41,22 +41,10 @@ def draw_lines(img, lines, color=[0, 0, 255], thickness=2):  # 선 그리기
 def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):  # 허프 변환
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len,
                             maxLineGap=max_line_gap)
-    line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-    draw_lines(line_img, lines)
+    # line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
+    # draw_lines(line_img, lines)
 
-    return line_img
-'''img: 8bit 즉 1채널인 흑백이미지만 가능 // 보통 Canny로 edge를 찾은 후에 이 함수를 적용하므로 이미 흑백인 상태
-rho: hough에서 p값(원점에서 직선까지의 거리)을 얼마만큼 증가시킬 것인지 // 보통 1
-theta: 보통 각도 값을 입력한 후 pi/180 을 곱한다. 각도 값은 [0:180]의 값을 입력한다.
-        theta 역시 얼마만큼 증가시키면서 조사할 것인지를 묻는 것. 보통 1
-threshold: 
-np.array([]): 그냥 빈 array
-min_line_length: 최소 길이의 선, 단위는 픽셀
-max_line_gap: 선 위의 점들 사이 최대 거리. 즉 점 사이의 거리가 이 값보다 크면 나와는 다른 선으로 간주하겠다는 의미
-            (잘 이해 안감)
-output: 선분들의 시작점과 끝점에 대한 좌표 값'''
-
-
+    return lines
 
 
 def weighted_img(img, initial_img, α=1, β=1., λ=0.):  # 두 이미지 operlap 하기
@@ -77,9 +65,26 @@ vertices = np.array(
     dtype=np.int32)
 ROI_img = region_of_interest(canny_img, vertices)  # ROI 설정
 
-hough_img = hough_lines(ROI_img, 1, 1 * np.pi / 180, 30, 10, 20)  # 허프 변환
+line_arr = hough_lines(ROI_img, 1, 1 * np.pi / 180, 30, 10, 20)  # 허프 변환
+line_arr = np.squeeze(line_arr)
 
-result = weighted_img(hough_img, image)  # 원본 이미지에 검출된 선 overlap
+# 기울기 구하기
+slope_degree = (np.arctan2(line_arr[:, 1] - line_arr[:, 3], line_arr[:, 0] - line_arr[:, 2]) * 180) / np.pi
+
+# 수평 기울기 제한
+line_arr = line_arr[np.abs(slope_degree) < 160]
+slope_degree = slope_degree[np.abs(slope_degree) < 160]
+# 수직 기울기 제한
+line_arr = line_arr[np.abs(slope_degree) > 95]
+slope_degree = slope_degree[np.abs(slope_degree) > 95]
+# 필터링된 직선 버리기
+L_lines, R_lines = line_arr[(slope_degree > 0), :], line_arr[(slope_degree < 0), :]
+temp = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+L_lines, R_lines = L_lines[:, None], R_lines[:, None]
+# 직선 그리기
+draw_lines(temp, L_lines)
+draw_lines(temp, R_lines)
+
+result = weighted_img(temp, image)  # 원본 이미지에 검출된 선 overlap
 cv2.imshow('result', result)  # 결과 이미지 출력
 cv2.waitKey(0)
-
